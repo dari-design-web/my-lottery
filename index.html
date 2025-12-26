@@ -8,8 +8,8 @@
         :root { --gold: #ffd700; --red: #b22222; --dark-gold: #c5a500; --btn-glow: rgba(255, 215, 0, 0.6); }
         * { box-sizing: border-box; }
         
-        /* 游標設定：恢復系統手指圖案 */
-        html, body, a, button, .card { 
+        /* 游標設定：全域強制手指圖案 */
+        html, body, a, button, .card, canvas { 
             cursor: pointer !important; 
         }
 
@@ -24,14 +24,14 @@
             position: fixed;
             width: 10px;
             height: 10px;
-            background: rgba(255, 215, 0, 0.4);
+            background: rgba(255, 215, 0, 0.5);
             border: 2px solid var(--gold);
             border-radius: 50%;
-            pointer-events: none; /* 不干擾點擊 */
-            z-index: 10000;
+            pointer-events: none;
+            z-index: 99999;
             transform: translate(-50%, -50%);
-            animation: halo-effect 0.6s ease-out forwards;
-            box-shadow: 0 0 15px var(--gold);
+            animation: halo-effect 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+            box-shadow: 0 0 20px var(--gold);
         }
 
         @keyframes halo-effect {
@@ -41,8 +41,8 @@
                 opacity: 1;
             }
             100% {
-                width: 100px;
-                height: 100px;
+                width: 120px;
+                height: 120px;
                 opacity: 0;
             }
         }
@@ -75,17 +75,18 @@
         .card:hover { transform: translateY(-10px); background: rgba(139,0,0,0.9); box-shadow: 0 0 25px var(--gold); }
         .winner-tag { color: #00ff00; font-size: 2vh; margin-top: 10px; font-weight: bold; min-height: 1.2em; word-break: break-all; }
 
-        /* 抽獎主框架 (70vw) */
+        /* 抽獎主框架：修改為 90% 不透明度 */
         .display-frame {
             position: absolute;
             top: 45%; left: 50%;
             transform: translate(-50%, -50%);
             width: 70vw; height: 55vh;
-            background: #fff;
+            background: rgba(255, 255, 255, 0.9); /* 10% 透明度 */
             border: 10px solid var(--gold);
             border-radius: 30px;
             box-shadow: inset 0 0 50px rgba(0,0,0,0.2), 0 0 30px var(--dark-gold);
             overflow: hidden;
+            backdrop-filter: blur(5px); /* 增加一點毛玻璃效果 */
         }
 
         #slot-canvas { width: 100%; height: 100%; }
@@ -169,18 +170,18 @@
 
 <script>
     // --- 點擊光暈特效邏輯 ---
-    document.addEventListener('mousedown', (e) => {
+    function createHalo(e) {
         const halo = document.createElement('div');
         halo.className = 'click-halo';
-        halo.style.left = e.clientX + 'px';
-        halo.style.top = e.clientY + 'px';
+        const x = e.clientX || (e.touches && e.touches[0].clientX);
+        const y = e.clientY || (e.touches && e.touches[0].clientY);
+        halo.style.left = x + 'px';
+        halo.style.top = y + 'px';
         document.body.appendChild(halo);
-        
-        // 動畫結束後移除元素
-        setTimeout(() => {
-            halo.remove();
-        }, 600);
-    });
+        setTimeout(() => { halo.remove(); }, 600);
+    }
+    document.addEventListener('mousedown', createHalo);
+    document.addEventListener('touchstart', createHalo, {passive: true});
 
     // --- 抽獎系統邏輯 ---
     const prizes = [
@@ -217,6 +218,8 @@
     let currentDisplayNums = [];
     let finalizedCount = 0;
     let targetResults = [];
+    // 用於控制數字彈跳動畫的縮放比例陣列
+    let numberScales = [];
 
     function renderSlotUI() {
         const dpr = window.devicePixelRatio || 1;
@@ -238,38 +241,27 @@
         const displayList = currentDisplayNums.length > 0 ? currentDisplayNums : (p.winners.length > 0 ? p.winners : []);
         
         if (displayList.length > 0) {
-            ctx.fillStyle = "#b22222";
-            
             if (p.count === 1) {
-                ctx.font = `bold ${h * 0.35}px Microsoft JhengHei`;
-                ctx.fillText(displayList[0], cx, cy * 1.15);
+                drawBounceNumber(displayList[0], cx, cy * 1.15, h * 0.35, 0);
             } else if (p.count <= 5) {
-                ctx.font = `bold ${h * 0.18}px Microsoft JhengHei`;
                 const spacing = w * 0.15;
                 const startX = cx - (spacing * (p.count - 1)) / 2;
-                
                 displayList.forEach((num, i) => {
-                    ctx.fillStyle = (i < finalizedCount || !rolling) ? "#b22222" : "#ff4444";
-                    ctx.fillText(num, startX + i * spacing, cy * 1.15);
+                    drawBounceNumber(num, startX + i * spacing, cy * 1.15, h * 0.18, i);
                 });
             } else {
                 const cols = 5;
                 const rows = 4;
-                const fontSize = h * 0.09;
-                ctx.font = `bold ${fontSize}px Microsoft JhengHei`;
-                
                 const gridWidth = w * 0.8;
                 const gridHeight = h * 0.6;
                 const startX = (w - gridWidth) / 2 + gridWidth / cols / 2;
                 const startY = (h - gridHeight) / 2 + gridHeight / rows / 2 + h * 0.12;
                 const gapX = gridWidth / cols;
                 const gapY = gridHeight / rows;
-
                 displayList.forEach((num, i) => {
                     const r = Math.floor(i / cols);
                     const c = i % cols;
-                    ctx.fillStyle = (i < finalizedCount || !rolling) ? "#b22222" : "#ff4444";
-                    ctx.fillText(num, startX + (c * gapX), startY + (r * gapY));
+                    drawBounceNumber(num, startX + (c * gapX), startY + (r * gapY), h * 0.09, i);
                 });
             }
         } else {
@@ -277,6 +269,51 @@
             ctx.font = `bold ${h * 0.12}px Microsoft JhengHei`;
             ctx.fillText("等待抽取", cx, cy * 1.1);
         }
+    }
+
+    // 繪製帶有彈跳特效的數字
+    function drawBounceNumber(text, x, y, baseSize, index) {
+        ctx.save();
+        ctx.translate(x, y);
+        // 獲取當前數字的縮放比例，預設為 1
+        const scale = numberScales[index] || 1;
+        ctx.scale(scale, scale);
+        
+        ctx.font = `bold ${baseSize}px Microsoft JhengHei`;
+        
+        // 如果正在彈跳，加入發光效果
+        if (scale > 1) {
+            ctx.shadowColor = "#ffd700";
+            ctx.shadowBlur = 30;
+            ctx.fillStyle = "#ff4444"; // 彈跳時顏色變亮
+        } else {
+            ctx.shadowBlur = 0;
+            // 已停下為深紅，還在跳為亮紅
+            ctx.fillStyle = (index < finalizedCount || !rolling) ? "#b22222" : "#ff4444";
+        }
+        
+        ctx.fillText(text, 0, 0);
+        ctx.restore();
+    }
+
+    // 觸發彈跳動畫
+    function triggerBounce(index) {
+        let scale = 1.0;
+        let growing = true;
+        const bounceInterval = setInterval(() => {
+            if (growing) {
+                scale += 0.15; // 放大速度
+                if (scale >= 1.4) growing = false; // 最大放大到 1.4 倍
+            } else {
+                scale -= 0.1; // 縮小速度
+                if (scale <= 1.0) {
+                    scale = 1.0;
+                    clearInterval(bounceInterval);
+                }
+            }
+            numberScales[index] = scale;
+            renderSlotUI();
+        }, 20);
     }
 
     function handleDrawStart() {
@@ -292,6 +329,8 @@
         rolling = true;
         drawBtn.innerText = "抽獎中...";
         drawBtn.disabled = true;
+        // 初始化縮放陣列
+        numberScales = new Array(p.count).fill(1);
 
         targetResults = [];
         let tempSet = new Set(drawnNumbers);
@@ -302,8 +341,6 @@
                 tempSet.add(n);
             }
         }
-        
-        // 洗牌算法
         for (let i = targetResults.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [targetResults[i], targetResults[j]] = [targetResults[j], targetResults[i]];
@@ -313,17 +350,22 @@
         let startTime = Date.now();
         const firstDelay = 3000; 
         const interval = 1500;  
+        let lastFinalizedCount = 0;
 
         timer = setInterval(() => {
             let elapsed = Date.now() - startTime;
-            
             if (elapsed < firstDelay) {
                 finalizedCount = 0;
             } else {
                 finalizedCount = 1 + Math.floor((elapsed - firstDelay) / interval);
             }
-            
             if (finalizedCount > p.count) finalizedCount = p.count;
+
+            // 偵測是否有新的數字停下，觸發彈跳
+            if (finalizedCount > lastFinalizedCount) {
+                triggerBounce(lastFinalizedCount);
+                lastFinalizedCount = finalizedCount;
+            }
 
             currentDisplayNums = [];
             for (let i = 0; i < p.count; i++) {
@@ -333,7 +375,6 @@
                     currentDisplayNums.push(Math.floor(Math.random() * 40) + 1);
                 }
             }
-
             renderSlotUI();
 
             if (finalizedCount >= p.count) {
@@ -346,7 +387,6 @@
     function finalizeResults(p) {
         p.winners = [...targetResults];
         p.winners.forEach(n => drawnNumbers.add(n));
-        
         renderSlotUI();
         rolling = false;
         drawBtn.innerText = "恭喜得獎";
@@ -368,9 +408,9 @@
     function goToDraw(idx) {
         currentPrizeIdx = idx;
         const p = prizes[idx];
-        
         currentDisplayNums = [];
         finalizedCount = 0;
+        numberScales = new Array(p.count).fill(1); // 重置縮放
         
         if (p.winners.length > 0) {
             drawBtn.innerText = "恭喜得獎";
