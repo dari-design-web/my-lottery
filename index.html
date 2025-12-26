@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2025 年終抽獎系統</title>
+    <style>
+        :root { --gold: #ffd700; --red: #b22222; --dark-gold: #c5a500; --btn-glow: rgba(255, 215, 0, 0.6); }
+        * { box-sizing: border-box; }
+        body, html { 
+            margin: 0; padding: 0; width: 100%; height: 100%; 
+            background: #000; font-family: "Microsoft JhengHei", sans-serif; 
+            color: white; overflow: hidden; 
+        }
+
+        /* 頁面切換 */
+        .page { 
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; 
+            display: none; z-index: 1;
+            background-color: #000;
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: cover;
+        }
+        #main-page { display: block; background-image: url('bg1.jpg'); }
+        #draw-page { background-image: url('bg1.jpg'); }
+
+        /* 首頁樣式 */
+        .home-container { 
+            position: relative; z-index: 10; width: 100%; height: 100%; 
+            display: flex; flex-direction: column; align-items: center; padding-top: 5vh; 
+            background: rgba(0,0,0,0.5);
+        }
+        h1.main-title { font-size: 8vh; color: var(--gold); text-shadow: 2px 2px 15px #000; margin-bottom: 3vh; }
+        .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; width: 90%; max-width: 1200px; }
+        .card { 
+            background: rgba(0,0,0,0.85); border: 2px solid var(--gold); 
+            border-radius: 15px; padding: 2vh; cursor: pointer; text-align: center;
+            transition: 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .card:hover { transform: translateY(-10px); background: rgba(139,0,0,0.9); box-shadow: 0 0 25px var(--gold); }
+        .winner-tag { color: #00ff00; font-size: 2vh; margin-top: 10px; font-weight: bold; min-height: 1.2em; word-break: break-all; }
+
+        /* 抽獎主框架 (70vw) */
+        .display-frame {
+            position: absolute;
+            top: 45%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 70vw; height: 55vh;
+            background: #fff;
+            border: 10px solid var(--gold);
+            border-radius: 30px;
+            box-shadow: inset 0 0 50px rgba(0,0,0,0.2), 0 0 30px var(--dark-gold);
+            overflow: hidden;
+        }
+
+        #slot-canvas { width: 100%; height: 100%; }
+
+        /* 下方發光抽獎按鈕 */
+        .draw-btn-container {
+            position: absolute;
+            bottom: 8vh;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 100;
+        }
+
+        .draw-btn {
+            padding: 15px 80px;
+            font-size: 3.5vh;
+            font-weight: bold;
+            color: #000;
+            background: linear-gradient(135deg, var(--gold) 0%, #fff 50%, var(--gold) 100%);
+            background-size: 200% 200%;
+            border: none;
+            border-radius: 60px;
+            cursor: pointer;
+            box-shadow: 0 0 20px var(--btn-glow);
+            transition: all 0.3s;
+            animation: shine-bg 3s infinite linear;
+        }
+
+        .draw-btn:hover:not(:disabled) {
+            transform: scale(1.05);
+            box-shadow: 0 0 40px var(--gold);
+        }
+
+        .draw-btn:active:not(:disabled) {
+            transform: scale(0.95);
+        }
+
+        .draw-btn:disabled {
+            background: #666;
+            color: #ccc;
+            box-shadow: none;
+            cursor: not-allowed;
+            animation: none;
+            opacity: 0.8;
+        }
+
+        @keyframes shine-bg {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* 返回按鈕 */
+        .btn-back { 
+            position: absolute; bottom: 3vh; right: 3vh; 
+            padding: 10px 30px; background: rgba(0,0,0,0.6); color: var(--gold);
+            border: 2px solid var(--gold); border-radius: 50px; font-weight: bold; cursor: pointer;
+            transition: 0.3s;
+            z-index: 101;
+        }
+        .btn-back:hover { background: var(--gold); color: #000; }
+    </style>
+</head>
+<body>
+
+<div id="main-page" class="page">
+    <div class="home-container">
+        <h1 class="main-title">2025 年終大抽獎</h1>
+        <div class="grid" id="prize-grid"></div>
+    </div>
+</div>
+
+<div id="draw-page" class="page">
+    <div class="display-frame">
+        <canvas id="slot-canvas"></canvas>
+    </div>
+
+    <div class="draw-btn-container">
+        <button id="main-draw-btn" class="draw-btn" onclick="handleDrawStart()">抽獎</button>
+    </div>
+
+    <button class="btn-back" onclick="goBackToHome()">返回上一頁</button>
+</div>
+
+<script>
+    const prizes = [
+        { id: 0, name: "頭獎", item: "現金 25000 元", count: 1, winners: [] },
+        { id: 1, name: "二獎", item: "現金 10000 元", count: 2, winners: [] },
+        { id: 2, name: "三獎", item: "現金 5000 元", count: 2, winners: [] },
+        { id: 3, name: "四獎", item: "戴森吸塵器", count: 1, winners: [] },
+        { id: 5, name: "五獎", item: "SWITCH 2", count: 1, winners: [] },
+        { id: 6, name: "六獎", item: "AIRPOD", count: 2, winners: [] },
+        { id: 7, name: "七獎", item: "智慧手錶", count: 2, winners: [] },
+        { id: 8, name: "八獎", item: "晶華酒店餐券", count: 5, winners: [] },
+        { id: 9, name: "九獎", item: "現金 1000 元", count: 20, winners: [] }
+    ];
+
+    let drawnNumbers = new Set();
+    let currentPrizeIdx = null;
+    let rolling = false;
+    let timer = null;
+
+    const canvas = document.getElementById('slot-canvas');
+    const ctx = canvas.getContext('2d');
+    const drawBtn = document.getElementById('main-draw-btn');
+
+    function syncCanvas() {
+        const dpr = window.devicePixelRatio || 1;
+        const rect = canvas.parentElement.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        ctx.scale(dpr, dpr);
+        renderSlotUI();
+    }
+    window.addEventListener('resize', syncCanvas);
+
+    let currentDisplayNums = [];
+    let finalizedCount = 0;
+    let targetResults = [];
+
+    function renderSlotUI() {
+        const dpr = window.devicePixelRatio || 1;
+        const w = canvas.width / dpr;
+        const h = canvas.height / dpr;
+
+        ctx.clearRect(0, 0, w, h);
+        if (currentPrizeIdx === null) return;
+
+        const p = prizes[currentPrizeIdx];
+        const cx = w / 2;
+        const cy = h / 2;
+
+        // 繪製獎項標題
+        ctx.fillStyle = "#c5a500";
+        ctx.font = `bold ${h * 0.08}px Microsoft JhengHei`;
+        ctx.textAlign = "center";
+        ctx.fillText(`獎項：${p.name} - ${p.item}`, cx, h * 0.18);
+
+        const displayList = currentDisplayNums.length > 0 ? currentDisplayNums : (p.winners.length > 0 ? p.winners : []);
+        
+        if (displayList.length > 0) {
+            ctx.fillStyle = "#b22222";
+            
+            if (p.count === 1) {
+                // 單一號碼
+                ctx.font = `bold ${h * 0.35}px Microsoft JhengHei`;
+                ctx.fillText(displayList[0], cx, cy * 1.15);
+            } else if (p.count <= 5) {
+                // 2-5 個號碼：固定座標渲染，防止左右晃動
+                ctx.font = `bold ${h * 0.18}px Microsoft JhengHei`;
+                const spacing = w * 0.15; // 號碼間距
+                const startX = cx - (spacing * (p.count - 1)) / 2;
+                
+                displayList.forEach((num, i) => {
+                    ctx.fillStyle = (i < finalizedCount || !rolling) ? "#b22222" : "#ff4444";
+                    ctx.fillText(num, startX + i * spacing, cy * 1.15);
+                });
+            } else {
+                // 九獎 20 人矩陣 (5 欄 x 4 列)
+                const cols = 5;
+                const rows = 4;
+                const fontSize = h * 0.09;
+                ctx.font = `bold ${fontSize}px Microsoft JhengHei`;
+                
+                const gridWidth = w * 0.8;
+                const gridHeight = h * 0.6;
+                const startX = (w - gridWidth) / 2 + gridWidth / cols / 2;
+                const startY = (h - gridHeight) / 2 + gridHeight / rows / 2 + h * 0.12;
+                const gapX = gridWidth / cols;
+                const gapY = gridHeight / rows;
+
+                displayList.forEach((num, i) => {
+                    const r = Math.floor(i / cols);
+                    const c = i % cols;
+                    ctx.fillStyle = (i < finalizedCount || !rolling) ? "#b22222" : "#ff4444";
+                    ctx.fillText(num, startX + (c * gapX), startY + (r * gapY));
+                });
+            }
+        } else {
+            ctx.fillStyle = "#ddd";
+            ctx.font = `bold ${h * 0.12}px Microsoft JhengHei`;
+            ctx.fillText("等待抽取", cx, cy * 1.1);
+        }
+    }
+
+    function handleDrawStart() {
+        if (rolling || currentPrizeIdx === null) return;
+        const p = prizes[currentPrizeIdx];
+        if (p.winners.length > 0) return;
+
+        if (40 - drawnNumbers.size < p.count) {
+            alert("號碼池已空，無法繼續抽獎！");
+            return;
+        }
+
+        rolling = true;
+        drawBtn.innerText = "抽獎中...";
+        drawBtn.disabled = true;
+
+        // 1. 決定最終結果
+        targetResults = [];
+        let tempSet = new Set(drawnNumbers);
+        while (targetResults.length < p.count) {
+            let n = Math.floor(Math.random() * 40) + 1;
+            if (!tempSet.has(n)) {
+                targetResults.push(n);
+                tempSet.add(n);
+            }
+        }
+        
+        // 核心修改：不直接 sort，而是洗牌（Shuffle）確保顯示順序隨機
+        for (let i = targetResults.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [targetResults[i], targetResults[j]] = [targetResults[j], targetResults[i]];
+        }
+
+        finalizedCount = 0;
+        let startTime = Date.now();
+        const firstDelay = 3000; // 第一個號碼停下的延遲
+        const interval = 1500;  // 之後每個號碼的間隔
+
+        timer = setInterval(() => {
+            let elapsed = Date.now() - startTime;
+            
+            // 計算目前應該停下多少個號碼
+            if (elapsed < firstDelay) {
+                finalizedCount = 0;
+            } else {
+                finalizedCount = 1 + Math.floor((elapsed - firstDelay) / interval);
+            }
+            
+            if (finalizedCount > p.count) finalizedCount = p.count;
+
+            currentDisplayNums = [];
+            for (let i = 0; i < p.count; i++) {
+                if (i < finalizedCount) {
+                    currentDisplayNums.push(targetResults[i]);
+                } else {
+                    currentDisplayNums.push(Math.floor(Math.random() * 40) + 1);
+                }
+            }
+
+            renderSlotUI();
+
+            if (finalizedCount >= p.count) {
+                clearInterval(timer);
+                finalizeResults(p);
+            }
+        }, 50);
+    }
+
+    function finalizeResults(p) {
+        p.winners = [...targetResults];
+        p.winners.forEach(n => drawnNumbers.add(n));
+        
+        renderSlotUI();
+        rolling = false;
+        drawBtn.innerText = "恭喜得獎";
+        drawBtn.disabled = false;
+    }
+
+    function initHome() {
+        const grid = document.getElementById('prize-grid');
+        // 在首頁顯示時，我們將號碼排序以利閱讀
+        grid.innerHTML = prizes.map((p, i) => `
+            <div class="card" onclick="goToDraw(${i})">
+                <div style="font-size:3.5vh; color:var(--gold); font-weight:bold;">${p.name}</div>
+                <div style="font-size:2.5vh; margin:5px 0;">${p.item}</div>
+                <div style="font-size:2vh; opacity:0.7;">名額：${p.count}</div>
+                <div class="winner-tag">${p.winners.length > 0 ? '得獎號：' + [...p.winners].sort((a,b)=>a-b).join(',') : ''}</div>
+            </div>
+        `).join('');
+    }
+
+    function goToDraw(idx) {
+        currentPrizeIdx = idx;
+        const p = prizes[idx];
+        
+        currentDisplayNums = [];
+        finalizedCount = 0;
+        
+        if (p.winners.length > 0) {
+            drawBtn.innerText = "恭喜得獎";
+            drawBtn.disabled = false;
+        } else {
+            drawBtn.innerText = "抽獎";
+            drawBtn.disabled = false;
+        }
+
+        document.getElementById('main-page').style.display = 'none';
+        document.getElementById('draw-page').style.display = 'block';
+        setTimeout(syncCanvas, 100);
+    }
+
+    function goBackToHome() {
+        document.getElementById('main-page').style.display = 'block';
+        document.getElementById('draw-page').style.display = 'none';
+        initHome();
+    }
+
+    initHome();
+    syncCanvas();
+</script>
+</body>
+</html>
